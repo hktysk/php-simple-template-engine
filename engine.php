@@ -14,8 +14,8 @@
 *  1.
 *   id={'123456}'} というオプションを正規表現で抽出する時,
 *   id={'123456}'が抽出されてしまうので, 時間があれば改善したい.
-*  2. 配列を子コンポーネントに渡せるようにしたい
-*  3. 配列を渡し, ループ処理を行いたい
+*  2. 多次元配列, 連想配列を子コンポーネントに渡せるようにしたい
+*  3. 多次元配列, 連想配列のループ処理を行いたい
 */
 
 function TemplateEngine(string $filePath) {
@@ -88,7 +88,12 @@ function TemplateEngine(string $filePath) {
     */
     foreach($options as $key => $value) {
       $key = "%$key%";
-      $component = str_replace($key, "$value", $component);
+
+      if (is_Array($value)) { // 値が配列の時
+        $component = ReplaceForeachComment($key, $value, $component);
+      } else { // 値が文字列または数値の時
+        $component = str_replace($key, "$value", $component);
+      }
     }
 
     /*
@@ -127,10 +132,22 @@ function ParseOptions(string $original_tag) {
 
   // 余計なスペースと'{' や'}' を削除し, オプションを'='で分割
   $options = array_map(function($s) {
-    $s = explode('=', trim($s));
-    $s[1] = substr($s[1], 1, -1);
+    $s = trim($s);
 
-    return $s;
+    /*
+    * '=' が位置を探す.
+    * explode を使うと値の中に'='があった場合に分割してしまう.
+    */
+    $equal_symbol = strpos($s, '=');
+    $result = [
+      substr($s, 0, $equal_symbol),
+      substr($s, $equal_symbol + 1)
+    ];
+
+    // '{' と '}' を削除
+    $result[1] = substr($result[1], 1, -1);
+
+    return $result;
   }, $options);
 
   /*
@@ -142,28 +159,81 @@ function ParseOptions(string $original_tag) {
   $options = array_column($options, 1, 0);
 
   /*
-  * 値の前後にクォートがついている場合は削除する.
+  * 値の前後にダブル/シングルクォートと半角スペースがあれば削除.
   * クォートを許可しているのは属性の指定を見やすくするためだけなので.
   */
   $options = array_map(function($s) {
-    $firstWord = substr($s, 0, 1);
-    $lastWord = substr($s, -1);
-
-    // 最初の文字を比較
-    if ($firstWord === "'" || $firstWord === '"') {
-      $s = substr($s, 1);
-    }
-
-    // 最後の文字を比較
-    if ($lastWord === "'" || $lastWord === '"') {
-      $s = substr($s, 0, -1);
-    }
-
-    return $s;
+    return trim($s, ' "\'');
   }, $options);
 
   // 値が空のオプションは削除
   $options = array_filter($options, 'boolval');
 
+  /*
+  * 値が配列を指定している場合は,
+  * 文字列からちゃんとしたPHPの配列を作る
+  */
+  $options = array_map(function($value) {
+    $firstWord = substr($value, 0, 1);
+    $lastWord = substr($value, -1);
+
+    if ($firstWord === '[' && $lastWord === ']') {
+      $pattern = '/(".*?"|\'.*?\'|[0-9]{1,})/s';
+      preg_match_all($pattern, $value, $values);
+      $values = $values[0];
+
+      // ダブル/シングルクォートと半角スペースがあれば削除
+      $value = array_map(function($v) {
+        return trim($v, ' "\'');
+      }, $values);
+    }
+
+    return $value;
+  }, $options);
+
   return $options;
+}
+
+function ReplaceForeachComment(
+  string $tag, // 例: %items%
+  array $values,
+  string $html
+) {
+  $start = "<!--.*?foreach.*?$tag.*?-->";
+  $end = "<!--.*?endforeach.*?$tag.*?-->";
+  $pattern =
+    "/$start.*?$end/s";
+
+  // ループ処理を示すコメントの記述を抽出
+  preg_match_all($pattern, $html, $foreachTags);
+  $foreachTags = $foreachTags[0];
+
+  // ループタグが見つからなかったらそのまま返却
+  if (count($foreachTags) === 0) return $html;
+
+  // ループタグを1つずつ処理
+  foreach($foreachTags as $original_foreachTag) {
+    $replacedHtml = [];
+
+    // もう使わないので, ループタグを削除
+    $foreachTag = preg_replace(
+      "/($start|$end)/",
+      '',
+      $original_foreachTag
+    );
+
+    // 値の配列を順次に置換
+    foreach($values as $value) {
+      $replacedHtml[] = str_replace($tag, $value, $foreachTag);
+    }
+
+    // 置換
+    $html = str_replace(
+      $original_foreachTag,
+      join(PHP_EOL, $replacedHtml),
+      $html
+    );
+  }
+
+  return $html;
 }

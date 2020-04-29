@@ -6,7 +6,14 @@
   %name%
 </div>
 
+<!-- foreach %items% -->
 <Component
   file={"item.html"}
-  itemId={"12345"}
+  itemId={%items%}
 />
+  <!-- foreach %names% -->
+  <div class="Profile__aaa">
+    %names%
+  </div>
+  <!-- endforeach %names% -->
+<!-- endforeach %items% -->
