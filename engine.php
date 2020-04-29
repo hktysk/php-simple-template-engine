@@ -10,6 +10,12 @@
 *  1. 最初のファイルから<Component />をもとに子コンポーネントを辿る.
 *  2. 値(Reactならprops)を子コンポーネントに渡せる.
 *
+* [課題]
+*  1.
+*   id={'123456}'} というオプションを正規表現で抽出する時,
+*   id={'123456}'が抽出されてしまうので, 時間があれば改善したい.
+*  2. 配列を子コンポーネントに渡せるようにしたい
+*  3. 配列を渡し, ループ処理を行いたい
 */
 
 function TemplateEngine(string $filePath) {
@@ -102,23 +108,29 @@ function ParseOptions(string $original_tag) {
   */
   $tag = str_replace(PHP_EOL, ' ', $original_tag);
 
+  // 最初についている '<Component' の文字列を削除
+  if (substr($tag, 0, 10) === '<Component') {
+    $tag = substr($tag, 10);
+  }
+
   // 最後についている '/>' の文字列を削除
   if (substr($tag, -2) === '/>') {
     $tag = substr($tag, 0, -2);
   }
 
-  // 半角スペースで分割
-  $information = explode(' ', $tag);
+  /*
+  * オプションを正規表現で抽出.
+  * '={'と'}'の最短一致のパターン.
+  */
+  preg_match_all('/.*?={.*?}/', $tag, $options);
+  $options = $options[0];
 
-  /*** オプションの抽出 ***/
-  // オプションの形をしている文字列('='の記号がある)のみを抽出
-  $options = array_filter($information, function($s) {
-    return (strpos($s, '=') !== false);
-  });
-
-  // オプションを'='で分割し, 対応する配列を作成
+  // 余計なスペースと'{' や'}' を削除し, オプションを'='で分割
   $options = array_map(function($s) {
-    return explode('=', $s);
+    $s = explode('=', trim($s));
+    $s[1] = substr($s[1], 1, -1);
+
+    return $s;
   }, $options);
 
   /*
